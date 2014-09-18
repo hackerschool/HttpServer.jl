@@ -73,14 +73,15 @@ import Base: run
 
 defaultevents = Dict{ASCIIString, Function}()
 defaultevents["error"]  = ( client, err ) -> println( err )
-defaultevents["listen"] = ( port )        -> println("Listening on $port...")
+defaultevents["listen"] = ( inet )        -> println("Listening on $inet...")
+defaultevents["listenf"] = ( socket_file )        -> println("Listening file $socket_file...")
 
-immutable HttpHandler
+type HttpHandler
     handle::Function
-    sock::Base.UVServer
     events::Dict
+    sock::Base.UVServer
 
-    HttpHandler(handle::Function) = new(handle, Base.TcpServer(), defaultevents)
+    HttpHandler(handle::Function) = new(handle, defaultevents)
 end
 handle(handler::HttpHandler, req::Request, res::Response) = handler.handle(req, res)
 
@@ -172,19 +173,37 @@ end
 #
 #     run(server, 8000)
 #
-function run(server::Server, port::Integer)
-    id_pool = 0 # Increments for each connection
+function handle_request(server::Server)
     sock = server.http.sock
+    id_pool = 0 # Increments for each connection
     websockets_enabled = server.websock != nothing
-    Base.uv_error("listen", !Base.bind(sock, Base.IPv4(uint32(0)), uint16(port)))
-    listen(sock)
-    event("listen", server, port)
 
     while true # handle requests, Base.wait_accept blocks until a connection is made
         client = Client(id_pool += 1, accept(sock))
         client.parser = ClientParser(message_handler(server, client, websockets_enabled))
         @async process_client(server, client, websockets_enabled)
     end
+end
+
+function run(server::Server, host::IPv4, port::Integer)
+    sock = Base.TcpServer()
+    server.http.sock = sock
+    Base.uv_error("listen", !Base.bind(sock, host, uint16(port)))
+    listen(sock)
+    inet = "$host:$port"
+    event("listen", server, inet)
+    handle_request(server)
+end
+
+function run(server::Server, port::Integer)
+    run(server, Base.IPv4(uint32(0)), port)
+end
+
+function run(server::Server, socket_file::ASCIIString)
+    server.http.events = defaultevents
+    server.http.sock = listen(socket_file)
+    event("listenf", server, socket_file)
+    handle_request(server)
 end
 
 using GnuTLS
