@@ -3,13 +3,21 @@
 # Serve HTTP requests in Julia.
 #
 module HttpServer
-
-try
-    using Docile
-    eval(:(@docstrings(manual = ["../README.md"])))
-catch
-    macro doc(ex)
-        esc(ex.args[2].args[2])
+if VERSION < v"0.4.0-dev"
+    try
+        using Docile
+        eval(:(@docstrings(manual = ["../README.md"])))
+    catch
+        macro doc(ex)
+            esc(ex.args[2].args[2])
+        end
+    end
+else
+    try
+        import Docile
+        eval(:(Docile.@docstrings(manual = ["../README.md"])))
+    catch e
+        println(e)
     end
 end
 
