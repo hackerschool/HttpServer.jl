@@ -13,10 +13,10 @@ function fibonacci(n)
   return prev
 end
 
-http = HttpHandler() do req::Request, res::Response
+http = HttpHandler() do req::Request
     m = match(r"^/fibo/(\d+)/?$",req.resource)
     if m == nothing return Response(404) end
-    number = BigInt(m.captures[1])
+    number = parse(BigInt, m.captures[1])
     if number < 1 || number > 100_000 return Response(500) end
     return Response(string(fibonacci(number)))
 end

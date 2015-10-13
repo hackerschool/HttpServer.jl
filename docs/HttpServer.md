@@ -26,7 +26,7 @@ The `Request` and `Response` types come from `HttpCommon`; see that section for 
     using HttpServer
 
     # Julia's do syntax lets you more easily pass a function as an argument
-    http = HttpHandler() do req::Request, res::Response
+    http = HttpHandler() do req::Request
         # if the requested path starts with `/hello/`, say hello
         # otherwise, return a 404 error
         Response( ismatch(r"^/hello/",req.resource) ? string("Hello ", split(req.resource,'/')[3], "!") : 404 )
