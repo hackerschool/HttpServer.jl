@@ -161,7 +161,7 @@ immutable Server
 end
 Server(http::HttpHandler)           = Server(http, nothing)
 Server(handler::Function)           = Server(HttpHandler(handler))
-Server(websock::WebSocketInterface) = Server(HttpHandler(req->Response(404)), websock)
+Server(websock::WebSocketInterface) = Server(HttpHandler((req,res)->Response(404)), websock)
 
 """Triggers `event` on `server`.
 
