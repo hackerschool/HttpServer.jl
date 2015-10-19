@@ -89,14 +89,24 @@ handler.events["foo"] = (bar) "Hello \$bar"
 HttpServer.event(server, "foo", "Julia")
 ```
 """
+
 immutable HttpHandler
     handle::Function
     sock::Base.TCPServer
     events::Dict
 
-    HttpHandler(handle::Function, sock::Base.TCPServer) = new(handle, sock, defaultevents)
-    HttpHandler(handle::Function) = new(handle, Base.TCPServer(), defaultevents)
+    function HttpHandler(handle::Function, sock::Base.TCPServer)
+        try
+            @which handle(Request())    # Check if signat	ure of handle is (:Request) 
+            new((req, res) -> handle(req), sock, defaultevents)
+        catch err
+            msg = "The use of handler(Request, Response) is deprecated. Please use handler(Request) instead."
+            println(msg)
+            new(handle, sock, defaultevents)
+        end
+    end
 end
+HttpHandler(handle::Function) = HttpHandler(handle, Base.TCPServer())
 handle(handler::HttpHandler, req::Request, res::Response) = handler.handle(req, res)
 
 """ Client encapsulates a single connection
