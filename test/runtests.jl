@@ -22,7 +22,7 @@ end
 
 import Requests: get, text, statuscode
 
-facts("HttpServer runs") do
+facts("HttpServer runs HttpHandler.handle = f(req, res)") do
     context("using HTTP protocol on 0.0.0.0:8000") do
         http = HttpHandler() do req::Request, res::Response
             res = Response( ismatch(r"^/hello/",req.resource) ? string("Hello ", split(req.resource,'/')[3], "!") : 404 )
@@ -75,6 +75,63 @@ facts("HttpServer runs") do
         client_tls_conf = Requests.TLS_VERIFY
         MbedTLS.ca_chain!(client_tls_conf, cert)
         ret = Requests.get("https://localhost:8002", tls_conf=client_tls_conf)
+        @fact text(ret) --> "hello"
+    end
+end
+
+
+facts("HttpServer runs HttpHandler.handle = f(req)") do
+    context("using HTTP protocol on 0.0.0.0:8003") do
+        function app(req::Request)
+            res = Response( ismatch(r"^/hello/",req.resource) ? string("Hello ", split(req.resource,'/')[3], "!") : 404 )
+            setcookie!(res, "sessionkey", "abc", Dict("Path"=>"/test", "Secure"=>""))
+        end
+        server = Server(app)
+        @async run(server, 8003)
+        sleep(1.0)
+        ret = Requests.get("http://localhost:8003/hello/travis")
+
+        @fact text(ret) --> "Hello travis!"
+        @fact statuscode(ret) --> 200
+        @fact haskey(ret.cookies, "sessionkey") --> true
+
+        let cookie = ret.cookies["sessionkey"]
+            @fact cookie.value --> "abc"
+            @fact cookie.attrs["Path"] --> "/test"
+            @fact haskey(cookie.attrs, "Secure") --> true
+        end
+
+
+        ret = Requests.get("http://localhost:8003/bad")
+        @fact text(ret) --> ""
+        @fact statuscode(ret) --> 404
+    end
+
+    context("using HTTP protocol on 127.0.0.1:8004") do
+        function app(req::Request)
+            Response( ismatch(r"^/hello/",req.resource) ? string("Hello ", split(req.resource,'/')[3], "!") : 404 )
+        end
+        server = Server(app)
+        @async run(server, host=ip"127.0.0.1", port=8004)
+        sleep(1.0)
+
+        ret = Requests.get("http://127.0.0.1:8004/hello/travis")
+        @fact text(ret) --> "Hello travis!"
+        @fact statuscode(ret) --> 200
+    end
+
+    context("Testing HTTPS on port 8005") do
+        function app(req)
+            Response("hello")
+        end
+        server = Server(app)
+        cert = MbedTLS.crt_parse_file("cert.pem")
+        key = MbedTLS.parse_keyfile("key.pem")
+        @async run(server, port=8005, ssl=(cert, key))
+        sleep(1.0)
+        client_tls_conf = Requests.TLS_VERIFY
+        MbedTLS.ca_chain!(client_tls_conf, cert)
+        ret = Requests.get("https://localhost:8005", tls_conf=client_tls_conf)
         @fact text(ret) --> "hello"
     end
 end

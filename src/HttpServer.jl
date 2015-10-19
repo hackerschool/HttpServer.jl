@@ -97,7 +97,7 @@ immutable HttpHandler
 
     function HttpHandler(handle::Function, sock::Base.TCPServer)
         try
-            @which handle(Request())    # Check if signat	ure of handle is (:Request) 
+            @which handle(Request())    # Check if signature of handle is (:Request) 
             new((req, res) -> handle(req), sock, defaultevents)
         catch err
             msg = "The use of handler(Request, Response) is deprecated. Please use handler(Request) instead."
