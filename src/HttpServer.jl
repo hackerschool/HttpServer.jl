@@ -96,18 +96,22 @@ immutable HttpHandler
     events::Dict
 
     function HttpHandler(handle::Function, sock::Base.TCPServer)
-        try
-            @which handle(Request())    # Check if signature of handle is (:Request) 
-            new((req, res) -> handle(req), sock, defaultevents)
-        catch err
-            msg = "The use of handler(Request, Response) is deprecated. Please use handler(Request) instead."
-            println(msg)
-            new(handle, sock, defaultevents)
-        end
+	new(handle, sock, defaultevents)
     end
 end
 HttpHandler(handle::Function) = HttpHandler(handle, Base.TCPServer())
-handle(handler::HttpHandler, req::Request, res::Response) = handler.handle(req, res)
+
+function handle(handler::HttpHandler, req::Request, res::Response)
+    # Uses try/catch because method_exists doesn't work for anonymous functions...i.e., do syntax.
+    try
+        @which handler.handle(Request())    # Check if signature of handle is (:Request) 
+	handler.handle(req)
+    catch err
+        Base.warn_once("The use of handler(Request, Response) is deprecated. Please use handler(Request) instead.")
+	handler.handle(req, res)
+    end
+end
+
 
 """ Client encapsulates a single connection
 
