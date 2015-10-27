@@ -103,11 +103,16 @@ HttpHandler(handle::Function) = HttpHandler(handle, Base.TCPServer())
 
 function handle(handler::HttpHandler, req::Request, res::Response)
     # Uses try/catch because method_exists doesn't work for anonymous functions...i.e., do syntax.
+    nargs = 1
     try
         @which handler.handle(Request())    # Check if signature of handle is (:Request) 
-	handler.handle(req)
     catch err
         Base.warn_once("The use of handler(Request, Response) is deprecated. Please use handler(Request) instead.")
+	nargs = 2
+    end
+    if nargs == 1
+	handler.handle(req)
+    else
 	handler.handle(req, res)
     end
 end
