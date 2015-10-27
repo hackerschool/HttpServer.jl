@@ -2,7 +2,7 @@
 #
 # To run the benchmark:
 # 1) Select the desired server by commenting out the undesired server
-# 2) Run the server: julia server_benchmark.jl
+# 2) Run the server: julia benchmark_helloworld.jl
 # 3) In another terminal:
 #     a) Compile the app:   ab -n 100 -c 1 http://0.0.0.0:8000/
 #     b) Run the benchmark: ab -n 10000 -c 1 http://0.0.0.0:8000/
