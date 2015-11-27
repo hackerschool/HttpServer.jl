@@ -25,6 +25,7 @@ import Requests: get, text, statuscode
 facts("HttpServer runs") do
     context("using HTTP protocol on 0.0.0.0:8000") do
         http = HttpHandler() do req::Request, res::Response
+            println(req.resource)
             res = Response( ismatch(r"^/hello/",req.resource) ? string("Hello ", split(req.resource,'/')[3], "!") : 404 )
             setcookie!(res, "sessionkey", "abc", Dict("Path"=>"/test", "Secure"=>""))
         end
@@ -43,7 +44,6 @@ facts("HttpServer runs") do
             @fact cookie.attrs["Path"] --> "/test"
             @fact haskey(cookie.attrs, "Secure") --> true
         end
-
 
         ret = Requests.get("http://localhost:8000/bad")
         @fact text(ret) --> ""
