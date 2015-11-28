@@ -401,6 +401,9 @@ end
 
 function close(server::Server)
     close(server.http.sock)
+    if server.websock <: WebSocketInterface
+        close(websock)
+    end
 end
 
 "Callback factory for providing `on_message_complete` for `client.parser`"
