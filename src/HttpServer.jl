@@ -8,6 +8,7 @@ module HttpServer
 using Compat; import Compat.String
 using HttpCommon
 using MbedTLS
+using HTTP2.Session
 
 include("RequestParser.jl")
 
@@ -150,10 +151,12 @@ end
 immutable Server
     http::HttpHandler
     websock::Union{Void, WebSocketInterface}
+    is_http2::Bool
 end
-Server(http::HttpHandler)           = Server(http, nothing)
+Server(http::HttpHandler)           = Server(http, nothing, false)
+Server(http::HttpHandler, is_http2::Bool) = Server(http, nothing, is_http2)
 Server(handler::Function)           = Server(HttpHandler(handler))
-Server(websock::WebSocketInterface) = Server(HttpHandler((req, res)->Response(404)), websock)
+Server(websock::WebSocketInterface) = Server(HttpHandler((req, res)->Response(404)), websock, false)
 
 """Triggers `event` on `server`.
 
@@ -243,9 +246,13 @@ function handle_http_request(server::Server)
             end
             throw(e)
         end
-        client = Client(id_pool += 1, sock)
-        client.parser = ClientParser(message_handler(server, client, websockets_enabled))
-        @async process_client(server, client, websockets_enabled)
+        if server.is_http2
+            @async process_client2(server, client)
+        else
+            client = Client(id_pool += 1, sock)
+            client.parser = ClientParser(message_handler(server, client, websockets_enabled))
+            @async process_client(server, client, websockets_enabled)
+        end
     end
 end
 
@@ -279,8 +286,12 @@ function handle_https_request(server::Server, ssl_config::MbedTLS.SSLConfig)
             continue
         end
         client = Client(id_pool += 1, sess)
-        client.parser = ClientParser(message_handler(server, client, websockets_enabled))
-        @async process_client(server, client, websockets_enabled)
+        if server.is_http2
+            @async process_client2(server, client)
+        else
+            client.parser = ClientParser(message_handler(server, client, websockets_enabled))
+            @async process_client(server, client, websockets_enabled)
+        end
     end
 end
 
@@ -364,6 +375,43 @@ function run(server::Server; args...)
 end
 # backward compatibility method
 run(server::Server, port::Integer) = run(server, port=port)
+
+function process_client2(server::Server, client::Client)
+    connection = new_connection(client.sock; isclient=false)
+    headers_evt = Session.take_evt!(connection)
+    @assert isa(headers_evt, EvtRecvHeaders)
+    headers = headers_evt.headers
+
+    method = headers[":method"]
+    resource = headers[":uri"]
+    data_evt = Session.take_evt!(connection)
+    @assert isa(data_evt, EvtRecvData)
+    data = data_evt.data
+
+    request = Request(method, resource, headers, data)
+    response = handle(server.http, request, Response())
+    if !(isa(response, Response) || isa(response, Tuple{Response, Tuple{Request, Response}}))
+        response = Response(response)
+    end
+    main_stream_identifier = connection.next_free_stream_identifier
+    if isa(response, Response)
+        put_act!(connection, ActSendHeaders(main_stream_identifier, response.headers, true))
+    end
+    if isa(response, Tuple{Response, Vector{Response}}) && length(response[2]) > 0
+        for i = 1:length(response[2])
+            promised = response[2][i]
+            promised_stream_identifier = connection.next_free_stream_identifier
+            put_act!(connection, ActPromise(main_stream_identifier, promised_stream_identifier,
+                                            promised[1].headers))
+            put_act!(connection, ActSendHeaders(promised_stream_identifier, promised[2].headers, true))
+            put_act!(connection, ActSendData(promised_stream_identifier, promised[2].data, true))
+        end
+    end
+
+    put_act!(connection, ActSendData(main_stream_identifier, response.data, true))
+
+    event("close", server, client)
+end
 
 """Handles live connections, runs inside a `Task`.
 
