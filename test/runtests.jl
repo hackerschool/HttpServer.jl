@@ -137,7 +137,7 @@ facts("HttpServer runs") do
         close(server)
     end
 
-    context("Testing HTTPS on port 8002") do
+    context("Testing HTTPS with HTTP/2 on port 8002") do
         http = HttpHandler() do req, res
             Response("hello")
         end
