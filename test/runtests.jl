@@ -50,6 +50,22 @@ facts("HttpServer runs") do
         close(server)
     end
 
+    context("using HTTP/2 protocol on 0.0.0.0:8000") do
+        http = HttpHandler() do req::Request, res::Response
+            res = Response( ismatch(r"^/hello/",req.resource) ? string("Hello ", split(req.resource,'/')[3], "!") : 404 )
+            setcookie!(res, "sessionkey", "abc", Dict("Path"=>"/test", "Secure"=>""))
+        end
+        server = Server(http, true)
+        @async run(server, 8000)
+        sleep(1.0)
+
+        ret = Requests.get("http://localhost:8000/hello/travis", http2=true)
+        @fact text(ret) --> "Hello travis!"
+        @fact statuscode(ret) --> 200
+
+        close(server)
+    end
+
     context("Rerun test using HTTP protocol on 0.0.0.0:8000 after closing") do
         http = HttpHandler() do req::Request, res::Response
             res = Response( ismatch(r"^/hello/",req.resource) ? string("Hello ", split(req.resource,'/')[3], "!") : 404 )
@@ -117,6 +133,22 @@ facts("HttpServer runs") do
         client_tls_conf = Requests.TLS_VERIFY
         MbedTLS.ca_chain!(client_tls_conf, cert)
         ret = Requests.get("https://localhost:8002", tls_conf=client_tls_conf)
+        @fact text(ret) --> "hello"
+        close(server)
+    end
+
+    context("Testing HTTPS on port 8002") do
+        http = HttpHandler() do req, res
+            Response("hello")
+        end
+        server = Server(http, true)
+        cert = MbedTLS.crt_parse_file(Pkg.dir("HttpServer","test","cert.pem"))
+        key = MbedTLS.parse_keyfile(Pkg.dir("HttpServer","test","key.pem"))
+        @async run(server, port=8002, ssl=(cert, key))
+        sleep(1.0)
+        client_tls_conf = Requests.TLS_VERIFY
+        MbedTLS.ca_chain!(client_tls_conf, cert)
+        ret = Requests.get("https://localhost:8002", tls_conf=client_tls_conf, http2=true)
         @fact text(ret) --> "hello"
         close(server)
     end

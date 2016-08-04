@@ -246,10 +246,11 @@ function handle_http_request(server::Server)
             end
             throw(e)
         end
+
+        client = Client(id_pool += 1, sock)
         if server.is_http2
             @async process_client2(server, client)
         else
-            client = Client(id_pool += 1, sock)
             client.parser = ClientParser(message_handler(server, client, websockets_enabled))
             @async process_client(server, client, websockets_enabled)
         end
@@ -285,6 +286,7 @@ function handle_https_request(server::Server, ssl_config::MbedTLS.SSLConfig)
             close(sock)
             continue
         end
+
         client = Client(id_pool += 1, sess)
         if server.is_http2
             @async process_client2(server, client)
@@ -295,7 +297,7 @@ function handle_https_request(server::Server, ssl_config::MbedTLS.SSLConfig)
     end
 end
 
-function default_ssl_config(ssl_cert, key)
+function default_ssl_config(ssl_cert, key; http2=false)
     conf = MbedTLS.SSLConfig()
     entropy = MbedTLS.Entropy()
     rng = MbedTLS.CtrDrbg()
@@ -303,6 +305,11 @@ function default_ssl_config(ssl_cert, key)
     MbedTLS.seed!(rng, entropy)
     MbedTLS.rng!(conf, rng)
     MbedTLS.own_cert!(conf, ssl_cert, key)
+
+    if http2
+        MbedTLS.set_alpn!(conf, ["h2"])
+    end
+
     MbedTLS.dbg!(conf, (level, filename, number, msg)->begin
         warn("MbedTLS emitted debug info: $msg in $filename:$number")
     end)
@@ -310,7 +317,7 @@ function default_ssl_config(ssl_cert, key)
 end
 
 function handle_https_request(server::Server, ssl_cert::Tuple{MbedTLS.CRT, MbedTLS.PKContext})
-    handle_https_request(server, default_ssl_config(ssl_cert...))
+    handle_https_request(server, default_ssl_config(ssl_cert...; http2=server.is_http2))
 end
 
 """ `run` starts `server`
@@ -377,38 +384,43 @@ end
 run(server::Server, port::Integer) = run(server, port=port)
 
 function process_client2(server::Server, client::Client)
-    connection = new_connection(client.sock; isclient=false)
+    connection = Session.new_connection(client.sock; isclient=false)
     headers_evt = Session.take_evt!(connection)
-    @assert isa(headers_evt, EvtRecvHeaders)
+    @assert isa(headers_evt, Session.EvtRecvHeaders)
     headers = headers_evt.headers
 
     method = headers[":method"]
-    resource = headers[":uri"]
-    data_evt = Session.take_evt!(connection)
-    @assert isa(data_evt, EvtRecvData)
-    data = data_evt.data
+    resource = headers[":path"]
+
+    if headers_evt.is_end_stream
+        data = Array{UInt8, 1}()
+    else
+        data_evt = Session.take_evt!(connection)
+        @assert isa(data_evt, EvtRecvData)
+        data = data_evt.data
+    end
 
     request = Request(method, resource, headers, data)
     response = handle(server.http, request, Response())
     if !(isa(response, Response) || isa(response, Tuple{Response, Tuple{Request, Response}}))
         response = Response(response)
     end
-    main_stream_identifier = connection.next_free_stream_identifier
+    main_stream_identifier = Session.next_free_stream_identifier(connection)
     if isa(response, Response)
-        put_act!(connection, ActSendHeaders(main_stream_identifier, response.headers, true))
+        Session.put_act!(connection, Session.ActSendHeaders(main_stream_identifier, response.headers, false))
     end
     if isa(response, Tuple{Response, Vector{Response}}) && length(response[2]) > 0
         for i = 1:length(response[2])
             promised = response[2][i]
             promised_stream_identifier = connection.next_free_stream_identifier
-            put_act!(connection, ActPromise(main_stream_identifier, promised_stream_identifier,
+            Session.put_act!(connection, Session.ActPromise(main_stream_identifier, promised_stream_identifier,
                                             promised[1].headers))
-            put_act!(connection, ActSendHeaders(promised_stream_identifier, promised[2].headers, true))
-            put_act!(connection, ActSendData(promised_stream_identifier, promised[2].data, true))
+            Session.put_act!(connection, Session.ActSendHeaders(promised_stream_identifier, promised[2].headers, false))
+            Session.put_act!(connection, Session.ActSendData(promised_stream_identifier, promised[2].data, true))
         end
     end
 
-    put_act!(connection, ActSendData(main_stream_identifier, response.data, true))
+    Session.put_act!(connection, Session.ActSendData(main_stream_identifier, response.data, true))
 
     event("close", server, client)
 end
