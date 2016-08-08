@@ -66,6 +66,23 @@ facts("HttpServer runs") do
         close(server)
     end
 
+    content("using HTTP/2 protocol upgrade on 0.0.0.0:8000") do
+        http = HttpHandler() do req::Request, res::Response
+            res = Response( ismatch(r"^/hello/",req.resource) ? string("Hello ", split(req.resource,'/')[3], "!") : 404 )
+            setcookie!(res, "sessionkey", "abc", Dict("Path"=>"/test", "Secure"=>""))
+        end
+        server = Server(http, true)
+        @async run(server, 8000)
+        sleep(1.0)
+
+        ret = Requests.get("http://localhost:8000/hello/travis", http2=true, upgrade=true)
+        @show ret
+        @fact text(ret) --> "Hello travis!"
+        @fact statuscode(ret) --> 200
+
+        close(server)
+    end
+
     context("Rerun test using HTTP protocol on 0.0.0.0:8000 after closing") do
         http = HttpHandler() do req::Request, res::Response
             res = Response( ismatch(r"^/hello/",req.resource) ? string("Hello ", split(req.resource,'/')[3], "!") : 404 )

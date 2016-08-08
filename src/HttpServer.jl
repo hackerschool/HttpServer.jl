@@ -383,8 +383,23 @@ end
 # backward compatibility method
 run(server::Server, port::Integer) = run(server, port=port)
 
-function process_client2(server::Server, client::Client)
-    connection = Session.new_connection(client.sock; isclient=false)
+function process_client2(server::Server, client::Client; server_preface=false)
+    CLIENT_PREFACE = b"PRI * HTTP/2.0\r\n\r\nSM\r\n\r\n"
+    pre = readbytes(client.sock, length(CLIENT_PREFACE))
+
+    if pre != CLIENT_PREFACE
+        # This is an upgrade request
+        client.parser = ClientParser(message_handler_upgrade2(server, client))
+        add_data(client.parser, pre)
+        @async process_client(server, client, false)
+    else
+        process_client_callback2(server, client; skip_preface=true)
+    end
+end
+
+function process_client_callback2(server::Server, client::Client; skip_preface=false)
+    connection = Session.new_connection(client.sock; isclient=false, skip_preface=skip_preface)
+
     headers_evt = Session.take_evt!(connection)
     @assert isa(headers_evt, Session.EvtRecvHeaders)
     headers = headers_evt.headers
@@ -512,6 +527,29 @@ function message_handler(server::Server, client::Client, websockets_enabled::Boo
     end
 end
 
+function message_handler_upgrade2(server::Server, client::Client)
+
+    # Called when the `ClientParser` has finished parsing a `Request`.
+    #
+    # If websockets are enabled and claim this request, defer to `server.
+    # websock` and return. Otherwise, call `server.http.handle` to get a
+    # `Response` for the `client`. Catches any errors with `server.http.
+    # handle`, returns a `500` and writes a stacktrace to `stdout`.
+    #
+    function on_message_complete(req::Request)
+        local response
+
+        # @assert req.headers["Upgrade"] == "h2c"
+
+        response = Response(101)
+        response.headers["Connection"] = "Upgrade"
+        response.headers["Upgrade"] = "h2c"
+
+        write(client.sock, response)
+
+        process_client_callback2(server, client; skip_preface=false)
+    end
+end
 
 
 include("mimetypes.jl")
