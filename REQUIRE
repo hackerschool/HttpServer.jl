@@ -1,5 +1,6 @@
 julia 0.4
 HttpCommon
 HttpParser
-MbedTLS
+MbedTLS 0.2.6
 Compat 0.7.16
+HTTP2 0.1.0
