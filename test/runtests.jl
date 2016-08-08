@@ -66,7 +66,7 @@ facts("HttpServer runs") do
         close(server)
     end
 
-    content("using HTTP/2 protocol upgrade on 0.0.0.0:8000") do
+    context("using HTTP/2 protocol upgrade on 0.0.0.0:8000") do
         http = HttpHandler() do req::Request, res::Response
             res = Response( ismatch(r"^/hello/",req.resource) ? string("Hello ", split(req.resource,'/')[3], "!") : 404 )
             setcookie!(res, "sessionkey", "abc", Dict("Path"=>"/test", "Secure"=>""))
@@ -79,6 +79,25 @@ facts("HttpServer runs") do
         @show ret
         @fact text(ret) --> "Hello travis!"
         @fact statuscode(ret) --> 200
+
+        close(server)
+    end
+
+    context("using HTTP/2 protocol with promises on 0.0.0.0:8000") do
+        http = HttpHandler() do req::Request, res::Response
+            promise_request = Request()
+            promise_request.headers[":path"] = "/promise"
+            (Response("Hello travis!"), [(promise_request, Response("A promise!"))])
+        end
+        server = Server(http, true)
+        @async run(server, 8000)
+        sleep(1.0)
+
+        ret = Requests.get("http://localhost:8000/hello/travis", http2=true)
+        @show ret[1].headers
+        @fact text(ret[1]) --> "Hello travis!"
+        @fact length(ret[2]) --> 1
+        @fact text(ret[2][1][2]) --> "A promise!"
 
         close(server)
     end

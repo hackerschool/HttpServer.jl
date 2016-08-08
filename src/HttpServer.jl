@@ -403,6 +403,7 @@ function process_client_callback2(server::Server, client::Client; skip_preface=f
     headers_evt = Session.take_evt!(connection)
     @assert isa(headers_evt, Session.EvtRecvHeaders)
     headers = headers_evt.headers
+    main_stream_identifier = headers_evt.stream_identifier
 
     method = headers[":method"]
     resource = headers[":path"]
@@ -411,31 +412,33 @@ function process_client_callback2(server::Server, client::Client; skip_preface=f
         data = Array{UInt8, 1}()
     else
         data_evt = Session.take_evt!(connection)
-        @assert isa(data_evt, EvtRecvData)
+        @assert isa(data_evt, Session.EvtRecvData)
         data = data_evt.data
     end
 
     request = Request(method, resource, headers, data)
     response = handle(server.http, request, Response())
-    if !(isa(response, Response) || isa(response, Tuple{Response, Tuple{Request, Response}}))
+    if !(isa(response, Response) || isa(response, Tuple{Response, Vector{Tuple{Request, Response}}}))
         response = Response(response)
     end
-    main_stream_identifier = Session.next_free_stream_identifier(connection)
+
     if isa(response, Response)
         Session.put_act!(connection, Session.ActSendHeaders(main_stream_identifier, response.headers, false))
-    end
-    if isa(response, Tuple{Response, Vector{Response}}) && length(response[2]) > 0
+        Session.put_act!(connection, Session.ActSendData(main_stream_identifier, response.data, true))
+    elseif isa(response, Tuple{Response, Vector{Tuple{Request, Response}}}) && length(response[2]) > 0
+        Session.put_act!(connection, Session.ActSendHeaders(main_stream_identifier, response[1].headers, false))
         for i = 1:length(response[2])
             promised = response[2][i]
-            promised_stream_identifier = connection.next_free_stream_identifier
+            promised_stream_identifier = Session.next_free_stream_identifier(connection)
             Session.put_act!(connection, Session.ActPromise(main_stream_identifier, promised_stream_identifier,
                                             promised[1].headers))
             Session.put_act!(connection, Session.ActSendHeaders(promised_stream_identifier, promised[2].headers, false))
             Session.put_act!(connection, Session.ActSendData(promised_stream_identifier, promised[2].data, true))
         end
+        Session.put_act!(connection, Session.ActSendData(main_stream_identifier, response[1].data, true))
+    else
+        @assert false
     end
-
-    Session.put_act!(connection, Session.ActSendData(main_stream_identifier, response.data, true))
 
     event("close", server, client)
 end
