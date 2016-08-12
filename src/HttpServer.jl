@@ -144,6 +144,7 @@ end
 * Instantiate with both an `HttpHandler` and `WebSocketInterface` to serve
   both protocols.
 * Instantiate with just an `HttpHandler` to serve only standard `Http`
+* Instantiate with a `HttpHandler` and `true` to serve with HTTP/2.
 * Instantiate with just a `Function` to create an `HttpHandler` automatically
 * Instantiate with just a `WebSocketInterface` to only serve websockets
   requests and `404` all others.
@@ -383,6 +384,11 @@ end
 # backward compatibility method
 run(server::Server, port::Integer) = run(server, port=port)
 
+"""Handle HTTP/2 live connections.
+
+This function initialize to process a HTTP/2 client. It tries to use HTTP/2
+protocol upgrade first, and then call `process_client_callback2`.
+"""
 function process_client2(server::Server, client::Client; server_preface=false)
     CLIENT_PREFACE = b"PRI * HTTP/2.0\r\n\r\nSM\r\n\r\n"
     pre = readbytes(client.sock, length(CLIENT_PREFACE))
@@ -397,6 +403,11 @@ function process_client2(server::Server, client::Client; server_preface=false)
     end
 end
 
+"""Handle HTTP/2 live connections callback.
+
+This function processes after the initial HTTP/1.1 parser finished parsing
+headers (for HTTP/2 protocol upgrade) or directly enters a HTTP/2 connection.
+"""
 function process_client_callback2(server::Server, client::Client; skip_preface=false)
     connection = Session.new_connection(client.sock; isclient=false, skip_preface=skip_preface)
 

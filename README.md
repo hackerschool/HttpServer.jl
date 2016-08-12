@@ -41,6 +41,12 @@ run(server, host=IPv4(127,0,0,1), port=8000)
 ```
 If you open up `localhost:8000/hello/name/` in your browser, you should get a greeting from the server.
 
+For HTTP/2 support, create a server with the second parameter set to true:
+
+```julia
+server = Server( http, true )
+```
+
 ---
 
 ```
