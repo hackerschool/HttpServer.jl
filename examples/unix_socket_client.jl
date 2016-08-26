@@ -15,8 +15,20 @@ function process_response(stream)
     r
 end
 
-clientside = connect("/tmp/julia.socket")
+# emulates Requests.do_request but with a socket connection
+stream = connect("/tmp/julia.socket")
 req = Requests.default_request("GET", "/", "/tmp/julia.socket", "")
 dump(req)
-write(clientside, Requests.render(req))
-dump(process_response(clientside))
+resp = Requests.Response()
+resp.request = Nullable(req)
+stream = Requests.ResponseStream(resp, stream)
+Requests.send_headers(stream)
+Requests.process_response(stream)
+while stream.state < Requests.BodyDone
+  wait(stream)
+end
+close(stream)
+ret = stream.response
+ret.data = read(stream)
+println(Requests.text(ret))
+
