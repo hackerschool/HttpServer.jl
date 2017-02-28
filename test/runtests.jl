@@ -136,4 +136,59 @@ facts("HttpServer runs") do
         @fact text(ret) --> "hello"
         close(server)
     end
+
+   @unix? context("using HttpProtocol on Unix Socket \"/tmp/julia.socket\"") do
+        http = HttpHandler(Base.PipeServer()) do req::Request, res::Response
+            res = Response( ismatch(r"^/hello/",req.resource) ? string("Hello ", split(req.resource,'/')[3], "!") : 404 )
+            setcookie!(res, "sessionkey", "abc", Dict("Path"=>"/test", "Secure"=>""))
+        end
+        server = Server(http)
+        @async run(server, socket="/tmp/julia.socket")
+        sleep(1.0)
+
+        # Based on `do_request`
+        stream = connect("/tmp/julia.socket")
+        req = Requests.default_request("GET", "/hello/travis", "/tmp/julia.socket", "")
+        resp = Requests.Response()
+        resp.request = Nullable(req)
+        stream = Requests.ResponseStream(resp, stream)
+        stream.timeout = Inf
+        Requests.send_headers(stream)
+        Requests.process_response(stream)
+        while stream.state < Requests.BodyDone
+          wait(stream)
+        end
+        close(stream)
+        ret = stream.response
+        ret.data = read(stream)
+
+        @fact text(ret) --> "Hello travis!"
+        @fact statuscode(ret) --> 200
+        @fact haskey(ret.cookies, "sessionkey") --> true
+
+        let cookie = ret.cookies["sessionkey"]
+            @fact cookie.value --> "abc"
+            @fact cookie.attrs["Path"] --> "/test"
+            @fact haskey(cookie.attrs, "Secure") --> true
+        end
+
+        stream = connect("/tmp/julia.socket")
+        req = Requests.default_request("GET", "/bad", "/tmp/julia.socket", "")
+        resp = Requests.Response()
+        resp.request = Nullable(req)
+        stream = Requests.ResponseStream(resp, stream)
+        stream.timeout = Inf
+        Requests.send_headers(stream)
+        Requests.process_response(stream)
+        while stream.state < Requests.BodyDone
+          wait(stream)
+        end
+        close(stream)
+        ret = stream.response
+        ret.data = read(stream)
+        @fact text(ret) --> ""
+        @fact statuscode(ret) --> 404
+        close(server)
+   end : nothing
 end
+

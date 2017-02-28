@@ -92,10 +92,10 @@ HttpServer.event(server, "foo", "Julia")
 """
 immutable HttpHandler
     handle::Function
-    sock::Base.TCPServer
+    sock::Base.IOServer
     events::Dict
 
-    HttpHandler(handle::Function, sock::Base.TCPServer) = new(handle, sock, defaultevents)
+    HttpHandler(handle::Function, sock::Base.IOServer) = new(handle, sock, defaultevents)
     HttpHandler(handle::Function) = new(handle, Base.TCPServer(), defaultevents)
 end
 handle(handler::HttpHandler, req::Request, res::Response) = handler.handle(req, res)
