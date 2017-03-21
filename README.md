@@ -50,6 +50,6 @@ If you open up `localhost:8000/hello/name/` in your browser, you should get a gr
 ::         ::
 :::::::::::::
      ::
-Hacker School
+Recurse Center
 :::::::::::::
 ```
