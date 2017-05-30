@@ -454,7 +454,7 @@ function message_handler(server::Server, client::Client, websockets_enabled::Boo
 end
 
 
-
+export mimetypes
 include("mimetypes.jl")
 
 function FileResponse(filename)
