@@ -1,6 +1,6 @@
 using HttpServer
 
-http = HttpHandler(Base.PipeServer()) do req::Request, res::Response
+http = HttpHandler(Base.PipeServer()) do req::Request
     Response("Hello Unix World!")
 end
 http.events["listen"] = (socket_file) -> println("Listening file $socket_file...")

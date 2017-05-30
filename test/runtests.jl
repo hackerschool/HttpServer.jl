@@ -24,7 +24,7 @@ import Requests: get, text, statuscode
 
 facts("HttpServer runs") do
     context("using HTTP protocol on 0.0.0.0:8000") do
-        http = HttpHandler() do req::Request, res::Response
+        http = HttpHandler() do req::Request
             res = Response( ismatch(r"^/hello/",req.resource) ? string("Hello ", split(req.resource,'/')[3], "!") : 404 )
             setcookie!(res, "sessionkey", "abc", Dict("Path"=>"/test", "Secure"=>""))
         end
@@ -78,7 +78,7 @@ facts("HttpServer runs") do
     end
 
     context("using HTTP protocol on 127.0.0.1:8001") do
-        http = HttpHandler() do req::Request, res::Response
+        http = HttpHandler() do req::Request
             Response( ismatch(r"^/hello/",req.resource) ? string("Hello ", split(req.resource,'/')[3], "!") : 404 )
         end
         server = Server(http)
@@ -106,7 +106,7 @@ facts("HttpServer runs") do
     end
 
     context("Testing HTTPS on port 8002") do
-        http = HttpHandler() do req, res
+        http = HttpHandler() do req
             Response("hello")
         end
         server = Server(http)

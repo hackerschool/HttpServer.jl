@@ -13,7 +13,7 @@ end
 
 using MbedTLS, HttpServer
 
-http = HttpHandler() do req, res
+http = HttpHandler() do req
     Response("Hello Secure World!")
 end
 

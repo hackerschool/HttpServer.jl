@@ -1,6 +1,6 @@
 using HttpServer
 
-http = HttpHandler() do req::Request, res::Response
+http = HttpHandler() do req::Request
     Response("Hello World")
 end
 http.events["listen"] = (saddr) -> println("Running on https://$saddr (Press CTRL+C to quit)")

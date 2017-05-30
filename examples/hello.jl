@@ -1,6 +1,6 @@
 using HttpServer
 
-http = HttpHandler() do req::Request, res::Response
+http = HttpHandler() do req::Request
     Response(ismatch(r"^/hello/",req.resource) ? string("Hello ", split(req.resource,'/')[3], "!") : 404)
 end
 
