@@ -175,25 +175,27 @@ setcookie!(r::Response, cookie::Cookie) = (r.cookies[cookie.name] = cookie; r)
 import Base.write
 "Converts a `Response` to an HTTP response string"
 function write(io::IO, response::Response)
-    write(io, join(["HTTP/1.1", response.status, HttpCommon.STATUS_CODES[response.status], "\r\n"], " "))
+    buffer = []
+    push!(buffer, join(["HTTP/1.1", response.status, HttpCommon.STATUS_CODES[response.status], "\r\n"], " "))
 
     response.headers["Content-Length"] = string(sizeof(response.data))
     for (header,value) in response.headers
-        write(io, string(join([ header, ": ", value ]), "\r\n"))
+        push!(buffer, string(join([ header, ": ", value ]), "\r\n"))
     end
     for (cookie_name, cookie) in response.cookies
-        write(io, "Set-Cookie: ", cookie_name, "=", cookie.value)
+        push!(buffer, "Set-Cookie: ", cookie_name, "=", cookie.value)
         for (attr_name, attr_val) in cookie.attrs
-            write(io, "; ", attr_name)
+            push!(buffer, "; ", attr_name)
             if !isempty(attr_val)
-                write(io, "=", attr_val)
+                push!(buffer, "=", attr_val)
             end
         end
-        write(io, "\r\n")
+        push!(buffer, "\r\n")
     end
 
-    write(io, "\r\n")
-    write(io, response.data)
+    push!(buffer, "\r\n")
+    push!(buffer, String(response.data))
+    write(io, join(buffer, ""))
 end
 
 """ Start `server` to listen on specified socket address.
