@@ -22,7 +22,7 @@ export HttpHandler,
        parsequerystring,
        setcookie!
 
-import Base: run, listen, close
+import Base: run, listen, close, isopen
 
 defaultevents = Dict{String, Function}()
 defaultevents["error"]  = ( client, err )->println( err )
@@ -404,6 +404,9 @@ end
 
 """ Closes the Server `server` by closing the underlying TCPServer `sock` in the HttpHandler. """
 close(server::Server) = close(server.http.sock)
+
+""" A Server is open if the underlying TCPServer `sock` is open. """
+isopen(server::Server) = isopen(server.http.sock)
 
 "Callback factory for providing `on_message_complete` for `client.parser`"
 function message_handler(server::Server, client::Client, websockets_enabled::Bool)
