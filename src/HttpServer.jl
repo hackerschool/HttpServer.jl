@@ -110,8 +110,7 @@ type Client{T<:IO}
     id::Int
     sock::T
     parser::ClientParser
-
-    Client(id::Int,sock::T) = new(id,sock)
+    Client{T}(id::Int,sock::T) where {T<:IO} = new(id, sock)
 end
 Client{T<:IO}(id::Int,sock::T) = Client{T}(id,sock)
 
