@@ -5,7 +5,8 @@
 __precompile__()
 module HttpServer
 
-using Compat; import Compat.String
+using Compat
+using Compat.Sys
 using HttpCommon
 using MbedTLS
 
@@ -22,13 +23,15 @@ export HttpHandler,
        parsequerystring,
        setcookie!
 
-import Base: run, listen, close
+import Base: run, close
 
 if VERSION > v"0.7-"
   using Sockets
-  using Sockets: TCPServer
+  using Sockets: TCPServer, IPAddr
+  import Sockets: listen
 else
-  using Base: TCPServer
+  using Base: TCPServer, IPAddr
+  import Base: listen
 end
 
 
@@ -157,7 +160,7 @@ end
 """
 struct Server
     http::HttpHandler
-    websock::Union{Void, WebSocketInterface}
+    websock::Union{Nothing, WebSocketInterface}
 end
 Server(http::HttpHandler)           = Server(http, nothing)
 Server(handler::Function)           = Server(HttpHandler(handler))
@@ -206,12 +209,12 @@ end
 
 """ Start `server` to listen on specified socket address.
 
-    listen(server::Server, host::Base.IPAddr, port::Integer) Server
+    listen(server::Server, host::IPAddr, port::Integer) Server
 
     Setup "server" so it listens on "port" on the address specified by "host".
     To listen on all interfaces pass, "IPv4(0)" or "IPv6(0)" as appropriate.
 """
-function listen(server::Server, host::Base.IPAddr, port::Integer)
+function listen(server::Server, host::IPAddr, port::Integer)
     Base.uv_error("listen", !bind(server.http.sock, host, UInt16(port)))
     listen(server.http.sock)
     inet = "$host:$port"
@@ -220,14 +223,14 @@ function listen(server::Server, host::Base.IPAddr, port::Integer)
 end
 listen(server::Server, port::Integer) = listen(server, IPv4(0), port)
 
-if is_unix()
-    @doc """
+if Compat.Sys.isunix()
+    """
 Start `server` to listen on named pipe/domain socket.
 
     listen(server::Server, path::AbstractString) Server
 
 Setup "server" to listen on named pipe/domain socket specified by "path".
-    """ ->
+    """
     function listen(server::Server, path::AbstractString)
         bind(server.http.sock, path) || throw(ArgumentError("could not listen on path $path"))
         Base.uv_error("listen", Base._listen(server.http.sock))
@@ -349,14 +352,13 @@ run(server, 8000)
 ```
 """
 function run(server::Server; args...)
-    initcbs()
     params = Dict(args)
 
     # parse parameters
     port = get(params, :port, 0)
     host = get(params, :host, IPv4(0))
     use_https = haskey(params, :ssl)
-    use_sockets = is_unix() ? (haskey(params, :socket) && !haskey(params, :port)) : false
+    use_sockets = Compat.Sys.isunix() ? (haskey(params, :socket) && !haskey(params, :port)) : false
 
     server = if use_sockets
         listen(server, params[:socket])  # start server on Unix socket
@@ -476,18 +478,29 @@ function FileResponse(filename)
     end
 end
 
+const on_message_begin_cb = Ref{Ptr{Nothing}}()
+const on_url_cb = Ref{Ptr{Nothing}}()
+const on_status_complete_cb = Ref{Ptr{Nothing}}()
+const on_header_field_cb = Ref{Ptr{Nothing}}()
+const on_header_value_cb = Ref{Ptr{Nothing}}()
+const on_headers_complete_cb = Ref{Ptr{Nothing}}()
+const on_body_cb = Ref{Ptr{Nothing}}()
+const on_message_complete_cb = Ref{Ptr{Nothing}}()
 
 function initcbs()
-    isdefined(HttpServer, :on_message_begin_cb) && return
+    Base.depwarn("HttpServer.initcbs() should no longer be necessary.", :HttpServer_initcbs)
+end
+
+function __init__()
     # Turn all the callbacks into C callable functions.
-    global const on_message_begin_cb = cfunction(on_message_begin, HTTP_CB...)
-    global const on_url_cb = cfunction(on_url, HTTP_DATA_CB...)
-    global const on_status_complete_cb = cfunction(on_status_complete, HTTP_CB...)
-    global const on_header_field_cb = cfunction(on_header_field, HTTP_DATA_CB...)
-    global const on_header_value_cb = cfunction(on_header_value, HTTP_DATA_CB...)
-    global const on_headers_complete_cb = cfunction(on_headers_complete, HTTP_CB...)
-    global const on_body_cb = cfunction(on_body, HTTP_DATA_CB...)
-    global const on_message_complete_cb = cfunction(on_message_complete, HTTP_CB...)
+    on_message_begin_cb[] =    @cfunction(on_message_begin,    Int, (Ptr{Parser},))
+    on_url_cb[] =              @cfunction(on_url,              Int, (Ptr{Parser}, Ptr{Cchar}, Csize_t,))
+    on_status_complete_cb[] =  @cfunction(on_status_complete,  Int, (Ptr{Parser},))
+    on_header_field_cb[] =     @cfunction(on_header_field,     Int, (Ptr{Parser}, Ptr{Cchar}, Csize_t,))
+    on_header_value_cb[] =     @cfunction(on_header_value,     Int, (Ptr{Parser}, Ptr{Cchar}, Csize_t,))
+    on_headers_complete_cb[] = @cfunction(on_headers_complete, Int, (Ptr{Parser},))
+    on_body_cb[] =             @cfunction(on_body,             Int, (Ptr{Parser}, Ptr{Cchar}, Csize_t,))
+    on_message_complete_cb[] = @cfunction(on_message_complete, Int, (Ptr{Parser},))
 end
 
 end # module HttpServer

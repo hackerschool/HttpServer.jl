@@ -143,10 +143,10 @@ struct ClientParser
         http_parser_init(parser)
         parser.data.complete_cb = on_message_complete
 
-        settings = ParserSettings(on_message_begin_cb, on_url_cb,
-                                  on_status_complete_cb, on_header_field_cb,
-                                  on_header_value_cb, on_headers_complete_cb,
-                                  on_body_cb, on_message_complete_cb)
+        settings = ParserSettings(on_message_begin_cb[], on_url_cb[],
+                                  on_status_complete_cb[], on_header_field_cb[],
+                                  on_header_value_cb[], on_headers_complete_cb[],
+                                  on_body_cb[], on_message_complete_cb[])
 
         new(parser, settings)
     end
